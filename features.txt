@@ -1,0 +1,8 @@
+For each visit
+  * Day of visit - Weekday/Weekend
+  * Unique UPC's per visit
+  * Sum of items bought (scancount > 0)
+  * Sum of items bought (scancount < 0)
+  * One hot encode/Count the Department.
+  * One hot encode/Count the Fineline Number.
+  * 
