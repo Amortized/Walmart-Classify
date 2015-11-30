@@ -7,7 +7,6 @@ import model;
 from sklearn import preprocessing;
 import xgboost as xgb;
 from multiprocessing import Pool;
-from progressbar import ProgressBar, SimpleProgress;
 import time;
 
 def unique(column):
