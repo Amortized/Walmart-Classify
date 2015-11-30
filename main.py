@@ -103,6 +103,9 @@ def genFeatures(visits, dpt, fln, upc, week, mode="train"):
 	    visit_feature[name] = [features, label];
 	  else:
 	    visit_feature[name] = features;
+	  
+	  if len(visit_feature.keys()) % 5000 == 0:
+	    print(".. " + str(len(visit_feature.keys())))
     return  visit_feature; 
   
 
