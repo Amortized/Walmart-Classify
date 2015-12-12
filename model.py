@@ -21,11 +21,11 @@ def do(train_X, train_Y):
   watchlist = [ (dtrain,'train'), (dvalidation, 'validation') ];
 
   #Params
-  param      = {'eval_metric' : 'mlogloss', 'objective' : 'multi:softprob', 'nthread' : 16, \
-	            'colsample_bytree' : 1.0, 'subsample' : 1.0, 'eta': 0.01,\
+  param      = {'eval_metric' : 'mlogloss', 'objective' : 'multi:softprob', 'nthread' : 32, \
+	            'colsample_bytree' : 1.0, 'subsample' : 1.0, 'eta': 0.02,\
 	            'seed' : 42, 'num_class' : len(np.unique(train_Y)) };
 
-  num_round  = 10;
+  num_round  = 5000;
 
   classifier = xgb.train(param,dtrain,num_round,evals=watchlist,early_stopping_rounds=100);
 
@@ -36,8 +36,4 @@ def do(train_X, train_Y):
   del dtrain, dvalidation;
 
   return classifier, itr;
-
-
-
-
 
