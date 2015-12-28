@@ -3,11 +3,11 @@ import sys;
 import numpy as np;
 import warnings;
 import math;
-import model;
 from sklearn import preprocessing;
 import xgboost as xgb;
 from multiprocessing import Pool;
 import time;
+import clustering;
 
 def unique(column):
 	'''
@@ -20,16 +20,21 @@ def unique(column):
 	temp = list(set(tr) & set(te));
 	return temp;
 
-def UpcToKeep(train):
+def UpcToKeep(train, th):
 	upc   = train['Upc'].value_counts()
 	upc_k = upc.keys();
 	upc_v = upc.values;
 	upc_v = upc_v / (1.0 * np.sum(upc_v));
-	return set(np.asarray(upc_k)[upc_v > 0.0005]);
+	return set(np.asarray(upc_k)[upc_v > th]);
 
-
+def FlnToKeep(train, th):
+	fln   = train['FinelineNumber'].value_counts()
+	fln_k = fln.keys();
+	fln_v = fln.values;
+	fln_v = fln_v / (1.0 * np.sum(fln_v));
+	return set(np.asarray(fln_k)[fln_v > th]);
    
-def genFeatures(visitNo, group, dpt, fln, upc, week, mode="train"):
+def genFeatures(visitNo, group, dpt, fln, upc, week,no_concepts, department_groups, mode="train"):
 	if mode == "train":
 	  label   = np.unique(group['TripType'])[0];
 	#Weekday feature
@@ -64,6 +69,16 @@ def genFeatures(visitNo, group, dpt, fln, upc, week, mode="train"):
 	  	    items_boughts_dpt_f[dpt.index(name)]  = np.sum(group['ScanCount']);
 		  else:
 		    items_boughts_dpt_f[len(items_boughts_dpt_f) - 1] = np.sum(group['ScanCount']);
+
+	#Group Departments
+	items_boughts_dpt_groups_f  = [0] * (no_concepts);
+	if items_boughts.empty == False:
+	  items_boughts_dpt    = items_boughts[[True if str(x) != 'nan' \
+				   			 else False for x in items_boughts.DepartmentDescription]];
+	  if items_boughts_dpt.empty == False:
+	    for name, group in items_boughts_dpt.groupby('DepartmentDescription'):
+	   	  if name in department_groups:
+	  	    items_boughts_dpt_groups_f[department_groups[name]]  += np.sum(group['ScanCount']);
 		  
 	#FinelineNumber
 	items_boughts_fln_f  = [0] * (1 + len(fln));
@@ -96,7 +111,8 @@ def genFeatures(visitNo, group, dpt, fln, upc, week, mode="train"):
 		      unique_dpt_count, unique_fln_count]  + \
 		      items_boughts_dpt_f + \
 		      items_boughts_fln_f + \
-		      items_boughts_Upc_f;
+		      items_boughts_Upc_f + \
+                      items_boughts_dpt_groups_f;
 	              
 	if mode == "train":            
 	  #Feature
@@ -110,15 +126,16 @@ def gen_wrapper(args):
   
 
 #Read the data 
-train = pd.read_csv("./data/train.csv");
-test  = pd.read_csv("./data/test.csv");
+train = pd.read_csv("/mnt/data/train.csv");
+test  = pd.read_csv("/mnt/data/test.csv");
   
 ###############
 dpt      = unique("DepartmentDescription");
-fln      = unique("FinelineNumber");
-upc      = list(set(unique("Upc")) & UpcToKeep(train));
+fln      = list(set(unique("FinelineNumber")));
+upc      = list(set(unique("Upc")) & UpcToKeep(train, 0.00005));
 week     = list(np.unique(train['Weekday']));
 tripType = np.sort(np.unique(train.TripType));
+no_concepts, department_groups = clustering.makeConceptsSearchable();
 le       = preprocessing.LabelEncoder();
 le.fit(tripType);
 
@@ -126,9 +143,9 @@ le.fit(tripType);
 train        = train.groupby('VisitNumber');
 
 #Create a Thread pool.
-pool         = Pool(3);
+pool         = Pool(32);
 
-jobs         = [(visitNo, group, dpt, fln, upc, week, "train") \
+jobs         = [(visitNo, group, dpt, fln, upc, week, no_concepts, department_groups, "train") \
 				for visitNo,group in train]
 
 results      = pool.imap_unordered(gen_wrapper, jobs);
@@ -156,8 +173,15 @@ train_Y      = np.array(train_Y);
 #Ensure labels are between (0,num_class-1)
 train_Y      = le.transform(train_Y);
 
+#Replace nan with zero
+train_X      = np.nan_to_num(train_X);
+
 #Train
-best_model,best_n_trees = model.do(train_X, train_Y);
+#best_model,best_n_trees = model.do(train_X, train_Y);
+
+#Save to disk
+np.save("/mnt/data/train_X.npy", train_X);
+np.save("/mnt/data/train_Y.npy", train_Y);
 
 del train_X, train_Y;
 
@@ -165,8 +189,8 @@ del train_X, train_Y;
 test        = test.groupby('VisitNumber');
 
 #Create a Thread pool.
-pool         = Pool(3);
-jobs         = [(visitNo, group, dpt, fln, upc, week, "test") \
+pool         = Pool(32);
+jobs         = [(visitNo, group, dpt, fln, upc, week, no_concepts, department_groups, "test") \
 				for visitNo,group in test]
 
 results      = pool.imap_unordered(gen_wrapper, jobs);
@@ -186,19 +210,12 @@ for k in results:
 
 del test;
 
-test_X      = np.array(test_X);
+test_X       = np.array(test_X);
+test_visitNo = np.array(test_visitNo);
 
-test_X      = xgb.DMatrix(test_X, missing=float('NaN'));
-y_hat       = best_model.predict(test_X,ntree_limit=best_n_trees)
+#Replace nan with zero
+test_X       = np.nan_to_num(test_X);
 
+np.save("/mnt/data/test_X.npy", test_X);
+np.save("/mnt/data/test_visitNo.npy", test_visitNo);
 
-df          = pd.read_csv("./data/sample_submission.csv");
-columns     = df.columns;
-
-#columns     = columns[:len(columns)-1]
-test_df     = pd.DataFrame(columns=columns);
-
-for i in range(0, len(test_visitNo)):
-  test_df.loc[i] = [test_visitNo[i]] + list(y_hat[i]);
-
-test_df.to_csv('./data/submission.csv', index=False);
