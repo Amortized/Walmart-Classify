@@ -14,11 +14,13 @@ from random import randint;
 import sys;
 import math
 import copy
+from scipy import sparse;
+import scipy;
 
 def generateParams():
     # Set the parameters by cross-validation
-    paramaters_grid    = {'colsample_bytree' : [0.40],\
-			  'subsample' : [0.40], 'max_depth' : [8]};
+    paramaters_grid    = {'colsample_bytree' : [0.60],\
+			  'subsample' : [0.60], 'max_depth' : [6]};
 
 
     paramaters_search  = list(ParameterGrid(paramaters_grid));
@@ -37,8 +39,8 @@ def generateParams():
 def do(train_X, train_Y, param, num_round):
   X_train, X_test, Y_train, Y_test = train_test_split(train_X, train_Y, test_size=0.10, random_state=42);
 
-  dtrain      = xgb.DMatrix( X_train, label=Y_train, missing=float('NaN'));
-  dvalidation = xgb.DMatrix( X_test, label=Y_test,missing=float('NaN'));
+  dtrain      = xgb.DMatrix( X_train, label=Y_train);
+  dvalidation = xgb.DMatrix( X_test, label=Y_test);
 
 
   del X_train, X_test, Y_train, Y_test;
@@ -61,6 +63,7 @@ def do(train_X, train_Y, param, num_round):
 
 
 train_X = np.load("/mnt/data/train_X.npy");
+train_X = scipy.sparse.csr_matrix(train_X); 
 train_Y = np.load("/mnt/data/train_Y.npy");
 
 
@@ -88,11 +91,12 @@ print("best score : " + str(overall_best_metric) + " for params : " +  str(best_
 
 #Predict
 test_X       = np.load("/mnt/data/test_X.npy");
+test_X       = scipy.sparse.csr_matrix(test_X);
 test_visitNo = np.load("/mnt/data/test_visitNo.npy");
 
 print("Test Data loaded");
 
-test_X      = xgb.DMatrix(test_X, missing=float('NaN'));
+test_X      = xgb.DMatrix(test_X);
 y_hat       = overall_best_classifier.predict(test_X,ntree_limit=overall_best_itr)
 
 
